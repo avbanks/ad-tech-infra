@@ -1,0 +1,15 @@
+# Azure Managed Prometheus agent settings (the add-on itself is enabled by Terraform).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ama-metrics-settings
+  namespace: kube-system
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: ama-metrics-settings
+      version: "${AMA_METRICS_SETTINGS_VERSION}"
+      sourceRef: { kind: HelmRepository, name: adtech, namespace: flux-system }
+  upgrade:
+    remediation: { retries: 2, remediateLastFailure: true }

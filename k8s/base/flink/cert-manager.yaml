@@ -1,0 +1,34 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: jetstack
+  namespace: cert-manager
+spec:
+  type: oci
+  url: oci://quay.io/jetstack/charts
+  interval: 1h
+---
+# Required by the Flink operator's admission webhook.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: cert-manager
+      version: "${CERT_MANAGER_VERSION}"
+      sourceRef: { kind: HelmRepository, name: jetstack }
+  install:
+    crds: CreateReplace
+    remediation: { retries: 3 }
+  upgrade:
+    crds: CreateReplace
+    remediation: { retries: 2, remediateLastFailure: true }
+  values:
+    crds:
+      enabled: true
+    resources:
+      requests: { cpu: 20m, memory: 64Mi }

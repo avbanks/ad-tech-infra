@@ -75,3 +75,21 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "gitops" {
+  description = "Flux bootstrap (same shape as modules/aks-cluster). null = no Flux."
+  type = object({
+    git = object({
+      repo_url = string
+      branch   = optional(string, "main")
+      token    = optional(string, "")
+    })
+    chart_registry_id           = string
+    chart_registry_login_server = string
+    wave_path                   = string
+    role                        = string
+    facts                       = map(string)
+  })
+  default   = null
+  sensitive = true
+}

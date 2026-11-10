@@ -1,0 +1,5 @@
+# The practice cluster gets the "every cluster" pieces and nothing role-specific.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../_common

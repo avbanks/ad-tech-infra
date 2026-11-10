@@ -1,0 +1,5 @@
+# dev: single JobManager and TaskManager.
+jobManager:
+  replicas: 1
+taskManager:
+  replicas: 1

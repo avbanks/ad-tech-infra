@@ -1,0 +1,45 @@
+# Defaults for every Kafka cluster. Overridden in order by values-<env>.yaml, values-<region>.yaml
+# (both packaged in this chart) and finally the per-cluster values Flux injects (cell, ipPrefix).
+
+# Subchart: operator lives in (and watches) the release namespace, same as the Kafka CR.
+strimzi-kafka-operator:
+  watchAnyNamespace: false
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { memory: 384Mi }
+
+clusterName: events
+kafkaVersion: "4.3.2"
+
+nodePool:
+  name: dual
+  replicas: 1
+  roles: [controller, broker]
+  storage:
+    size: 20Gi
+    class: managed-csi
+  resources:
+    requests: { cpu: 500m, memory: 2Gi }
+    limits: { memory: 2Gi }
+  jvmOptions:
+    -Xms: 1024m
+    -Xmx: 1024m
+
+# Cross-cluster access from ingest/flink clusters in the same VNet via an Azure *internal* LB.
+# ipPrefix is the first 3 octets of this cluster's /24 (injected by Flux from the cluster's facts):
+#   bootstrap = <ipPrefix>.250, broker N = <ipPrefix>.(251+N)
+vnetListener:
+  enabled: true
+  port: 9094
+  ipPrefix: ""
+
+replicationFactor: 1
+minInsyncReplicas: 1
+
+topics:
+  - { name: bid-requests, partitions: 6, retentionMs: 86400000 }
+  - { name: bid-responses, partitions: 6, retentionMs: 86400000 }
+  - { name: impressions, partitions: 6, retentionMs: 259200000 }
+  - { name: clicks, partitions: 3, retentionMs: 259200000 }
+  - { name: conversions, partitions: 3, retentionMs: 604800000 }
+  - { name: enriched-events, partitions: 6, retentionMs: 259200000 }

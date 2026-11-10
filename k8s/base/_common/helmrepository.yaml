@@ -1,0 +1,12 @@
+# Our charts (k8s/charts/*), published by scripts/publish-charts.sh to the env's ACR.
+# provider: azure -> source-controller pulls with the node's managed identity (AcrPull granted by Terraform).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: adtech
+  namespace: flux-system
+spec:
+  type: oci
+  provider: azure
+  url: oci://${CHART_REGISTRY}/charts
+  interval: 5m

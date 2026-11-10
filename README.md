@@ -1,7 +1,8 @@
 # ad-tech-infra
 
 Multi-region AKS platform for ad-tech event ingestion → Kafka (Strimzi) → Flink, managed with
-**Azure Kubernetes Fleet Manager**. IaC: OpenTofu + Terragrunt (stacks). Workloads: Helm + helmfile.
+**Azure Kubernetes Fleet Manager**. IaC: OpenTofu + Terragrunt (stacks). Workloads: Helm charts delivered by
+Flux, promoted wave by wave (see [Kubernetes delivery](#kubernetes-delivery)).
 
 Only `dev` exists so far. It uses cheap SKUs, the Free AKS tier, 1 system node and 1–2 app nodes per cluster.
 
@@ -51,7 +52,7 @@ Only `dev` exists so far. It uses cheap SKUs, the Free AKS tier, 1 system node a
 - **Fleet owns upgrades, the cluster doesn't.** AKS `automatic_upgrade_channel` is off. A Fleet auto-upgrade profile (`Stable`) triggers update runs that follow the paired-regions strategy. Node OS images still self-patch (`NodeImage`).
 - **Two delivery paths for Kubernetes config:**
   - *Fleet hub `ClusterResourcePlacement`* handles the cross-cutting baseline every cluster needs (a namespace and a PriorityClass today). It is applied once per continent and can't drift.
-  - *helmfile per member* handles role-specific stacks (operators and CRs). It is driven by AKS tags, so the inventory is whatever Azure actually holds.
+  - *Flux on every member* pulls the role's HelmReleases from `k8s/base/<role>` and the versions to run from `k8s/waves/<env>/<continent>/<wave>`. Terraform only tells each cluster which wave and role it is; from then on what runs is a git change.
 
 ### IP plan
 
@@ -63,7 +64,7 @@ Only `dev` exists so far. It uses cheap SKUs, the Free AKS tier, 1 system node a
 - Kafka's cross-cluster listener is an **internal LB with pinned IPs**:
   - bootstrap = `<kafka subnet>.250:9094`
   - broker N = `.251+N`
-  - Terragrunt computes the prefix and stamps it on every cluster in the cell as the `kafkaIpPrefix` tag. helmfile reads it from there.
+  - Terragrunt computes the prefix, stamps it on every cluster in the cell as the `kafkaIpPrefix` tag and injects it into Flux as `KAFKA_IP_PREFIX`.
 
 ### Naming
 
@@ -81,36 +82,90 @@ root.hcl                      backend (tfstateabanks, from mock-infra) + azurerm
 modules/                      plain OpenTofu modules
   network/                    RG, VNet, per-cluster /24 subnets, NSG
   aks-cluster/                AKS (Entra RBAC, overlay+Cilium, workload identity), app pool,
-                              subnet role assignment, Fleet membership
+                              subnet role assignment, Fleet membership, Flux bootstrap
+  flux-bootstrap/             Flux extension + flux configuration (wave + role Kustomizations), AcrPull
   fleet/                      Fleet + hub (azapi), paired-region update strategy, auto-upgrade, hub RBAC
   monitoring/                 global Azure Monitor Workspace, DCE/DCR, recording rules, Managed Grafana
+  registry/                   global ACR: Helm chart registry Flux pulls from
 units/                        Terragrunt unit templates (read `values` from the stack)
-  network/  fleet/  aks-cluster/  monitoring/
+  network/  fleet/  aks-cluster/  monitoring/  registry/  debug-cluster/
 stacks/region/                one region = network + 9 cluster units
 live/dev/
-  env.hcl                     subscription, SKUs, role sizing, fleet settings
+  env.hcl                     subscription, SKUs, role sizing, fleet, gitops repo, registry
   regions.hcl                 continent -> paired regions + CIDR index
-  global/terragrunt.stack.hcl env-wide units (monitoring), applied before any continent
+  global/terragrunt.stack.hcl env-wide units (monitoring, registry), applied before any continent
   <na|sa|eu|as|af>/terragrunt.stack.hcl   fleet unit + primary/secondary region stacks
 k8s/
-  helmfile.yaml.gotmpl        one file for all clusters; releases enabled by role
-  charts/kafka-cluster        Kafka + KafkaNodePool + KafkaTopics (Strimzi v1 API)
-  charts/flink-session        FlinkDeployment session cluster + kafka-endpoints ConfigMap
-  charts/fleet-baseline       hub: namespace, PriorityClass, ClusterResourcePlacement
-  values/                     upstream chart values (strimzi, cert-manager, flink-operator, vector)
+  charts/kafka-stack          umbrella: Strimzi operator (dep) + Kafka/KafkaNodePool/KafkaTopics
+  charts/flink-stack          FlinkDeployment session cluster + kafka-endpoints ConfigMap
+  charts/ingest-stack         umbrella: Vector (dep) + HTTP -> Kafka config
+  charts/ama-metrics-settings managed Prometheus agent settings (every cluster)
+  charts/fleet-baseline       hub: namespace, PriorityClass, ClusterResourcePlacement (helmfile, pushed)
+  base/_common                every cluster: chart HelmRepository, ama-metrics-settings, Flux -> GitHub status
+  base/<kafka|flink|ingest|debug>  HelmReleases per role, versions as ${VARS}
+  waves/<env>/<continent>/wave-N/versions.yaml   the numbers a promotion edits
+  helmfile.yaml.gotmpl        HUB only (fleet-baseline)
 scripts/
-  deploy-k8s.sh               discover clusters/hubs by tag -> helmfile per cluster
+  publish-charts.sh           package k8s/charts/* -> ACR (immutable versions); CI runs it on merge
+  render-base.sh              render k8s/base/<role> exactly as Flux would, no cluster needed
+  deploy-k8s.sh               push fleet-baseline to the hubs (members are Flux-managed)
+  flux-status-secret.sh       one-time: GitHub token for commit statuses on every cluster
   validate-crs.py             strict validation of rendered CRs against CRD schemas
+.github/workflows/charts.yaml k8s-check on PRs; publish charts on merge to main
 ```
 
-What each role gets:
+What each role gets (HelmReleases in `k8s/base/<role>`, every cluster also gets `base/_common`):
 
 | Role | Releases |
 |---|---|
-| kafka  | `strimzi-kafka-operator` 1.3.1 → `kafka-cluster` (Kafka 4.3.2, KRaft, 1 dual-role node in dev, RF=1) |
-| flink  | `cert-manager` v1.21.3 → `flink-kubernetes-operator` 1.16.1 → `flink-session` (Flink 1.20) |
-| ingest | `vector` 0.61.0: HTTP source → Kafka sink, topic picked by `event_type` |
-| hub    | `fleet-baseline` (CRP, PickAll) |
+| kafka  | `kafka-stack` = Strimzi operator 1.3.1 + Kafka 4.3.2 (KRaft, 1 dual-role node in dev, RF=1) |
+| flink  | `cert-manager` v1.21.3 → `flink-kubernetes-operator` 1.16.1 → `flink-stack` (Flink 1.20 session cluster) |
+| ingest | `ingest-stack` = Vector 0.61.0: HTTP source → Kafka sink, topic picked by `event_type` |
+| debug  | `_common` only |
+| hub    | `fleet-baseline` (CRP, PickAll) via helmfile |
+
+## Kubernetes delivery
+
+Nothing is pushed to member clusters. Each one runs Flux (AKS extension) with two Kustomizations that
+Terraform creates once (`modules/flux-bootstrap`):
+
+| Kustomization | Path | Produces |
+|---|---|---|
+| `platform-wave` | `k8s/waves/<env>/<continent>/<wave>` | the `versions` ConfigMap in flux-system |
+| `platform-role` | `k8s/base/<role>` | the role's HelmReleases, with `${FACTS}` (from Terraform: ENVIRONMENT, REGION, CELL, KAFKA_IP_PREFIX, ...) and `${*_VERSION}` (from the ConfigMap) substituted |
+
+**Waves** are rollout groups, assigned per cluster by Terraform (`units/aks-cluster`) and stamped as the `wave` tag:
+
+| Wave | Members | Promotion |
+|---|---|---|
+| wave-1 | primary region, cell 01 (ingest/kafka/flink) | automatic |
+| wave-2 | primary region, cells 02-03 | PR, after wave-1 bakes |
+| wave-3 | secondary region, all cells | PR, after wave-2 bakes |
+
+Whole cells only: a wave never contains kafka-01 without its ingest-01 and flink-01.
+
+**Shipping a change** (chart template, values, upstream bump, a new app):
+
+1. Edit the chart under `k8s/charts/<role>-stack` and bump `version` in its Chart.yaml. Per-env and per-region
+   overrides are `values-<env>.yaml` / `values-<region>.yaml` *inside the chart*, so they are versioned too.
+2. Merge. CI runs `make k8s-check` and `scripts/publish-charts.sh`, which pushes the new version to ACR.
+   Publishing is inert: no cluster changes.
+3. Bump the version in `k8s/waves/dev/na/wave-1/versions.yaml`. Within a minute the three cell-01 clusters
+   upgrade; Flux posts a commit status `flux/platform-role/<cluster>` when each is healthy.
+4. Repeat for wave-2 and wave-3 by PR. Step 3-4 is what Kargo automates (Warehouse on the chart registry,
+   a Stage per wave with `git-open-pr` / `git-wait-for-pr`); it is not wired up yet.
+
+**What bypasses the waves.** `k8s/base/**` is read from `main`, so adding or removing a HelmRelease, or
+editing `_common`, reaches every cluster of that role on merge. Keep the base to plumbing; anything that
+could hurt belongs in a chart. A new HelmRelease needs its `*_VERSION` key in every wave file first (or in the
+same PR), or substitution fails on clusters whose wave lacks it.
+
+**Adding an application to a role**: either add it to the role's umbrella chart (one version, promoted with
+the brokers), or give it its own chart + a HelmRelease file in `k8s/base/<role>` + a key in the wave files
+(own version, promoted independently). For every role, put the HelmRelease in `k8s/base/_common`.
+
+**Chart registry auth**: Flux's HelmRepository uses `provider: azure`; Terraform grants the kubelet
+identity AcrPull. Charts are immutable once published (`publish-charts.sh` skips existing versions).
 
 ## Observability
 
@@ -134,17 +189,23 @@ Azure Managed Prometheus with **one global Azure Monitor Workspace** (`amw-adtec
 
 ## Usage
 
-Tools are pinned in `.tool-versions` (OpenTofu 1.13.2, Terragrunt 1.2.0). You also need `helmfile` (plus the helm-diff plugin: `helm plugin install https://github.com/databus23/helm-diff`, or `helmfile init`), `kubelogin`, `az` and `jq`.
+Tools are pinned in `.tool-versions` (OpenTofu 1.13.2, Terragrunt 1.2.0). You also need `helm`, `flux` (`brew install fluxcd/tap/flux`, for `make k8s-check`), `helmfile` (hub only; plus the helm-diff plugin: `helm plugin install https://github.com/databus23/helm-diff`), `kubelogin`, `az` and `jq`.
 
 ```bash
-make validate                 # all 106 units, no Azure calls beyond backend init
+make validate                 # all 107 units, no Azure calls beyond backend init
 make plan CONTINENT=na        # read-only plan (dependencies use mock outputs until applied)
-make apply-global             # Prometheus workspace + Grafana (once, before any continent)
-make apply CONTINENT=na       # fleet -> networks -> 18 clusters (refuses without CONTINENT)
-make k8s-check                # helm lint + helmfile template for every role, no cluster needed
-scripts/deploy-k8s.sh -c na diff
-scripts/deploy-k8s.sh -c na apply      # hub first, then Kafka clusters, then ingest/flink
+make apply-global             # Prometheus workspace + Grafana + chart registry (once, before any continent)
+make charts-publish           # push k8s/charts/* to ACR (CI does this on merge; needed before clusters can install)
+make apply CONTINENT=na       # fleet -> networks -> 18 clusters, each with Flux pointing at its wave + role
+make k8s-check                # helm lint + render k8s/base for every role as Flux would, no cluster needed
+scripts/render-base.sh kafka k8s/waves/dev/na/wave-2 REGION=eastus2 CELL=02   # see exactly what one cluster applies
+scripts/deploy-k8s.sh -c na apply      # hubs only: fleet-baseline via helmfile
+GITHUB_STATUS_TOKEN=... scripts/flux-status-secret.sh -c na   # once: let Flux post commit statuses
 ```
+
+Flux needs to read the repo: for a private repo `export GITOPS_GIT_TOKEN=<read-only PAT>` before `make apply`
+(`env.hcl` passes it to the Flux configuration). Order on a fresh env: `apply-global` → `charts-publish` →
+`apply CONTINENT=…` → `deploy-k8s.sh apply`.
 
 To shrink dev, delete cell blocks from `stacks/region/terragrunt.stack.hcl` and lower `clusters_per_role` in `env.hcl`. Do the same to grow it.
 
@@ -172,4 +233,5 @@ Rough dev cost if everything ran: about 185 small VMs, roughly **$10–12k/month
 - A public ingest edge (Front Door / App Gateway for Containers) in front of the internal Vector LBs.
 - Fleet member labels plus label-selected CRPs, so Strimzi and Flink operators can also be placed from the hub.
 - App metrics: PodMonitors (`azmonitoring.coreos.com/v1`) plus Strimzi/Flink/Vector exporters, and alert rule groups. The infra is in place; see [Observability](#observability).
-- A CI pipeline running `make validate k8s-check`.
+- Kargo on the debug cluster: Warehouse on the ACR charts, Stage per wave, PR-gated promotion into the wave files, Prometheus verification per wave.
+- A CI job for `make validate` (charts already have `.github/workflows/charts.yaml`).

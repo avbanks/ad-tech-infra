@@ -34,6 +34,21 @@ locals {
   fleet_stage_wait_seconds = 600 # bake time between primary and secondary region (dev: 10 min)
   fleet_auto_upgrade       = { channel = "Stable" }
 
+  # ---- GitOps (Flux on every cluster, see k8s/README section "Kubernetes delivery") ----
+  gitops = {
+    repo_url = "https://github.com/avbanks/ad-tech-infra.git"
+    branch   = "main"
+    # Private repo: export GITOPS_GIT_TOKEN=<read-only PAT> before apply. Empty = anonymous clone (public repo).
+    token = get_env("GITOPS_GIT_TOKEN", "")
+  }
+
+  # ---- Chart registry (ACR, global) - scripts/publish-charts.sh pushes here, Flux pulls ----
+  registry = {
+    name     = "acradtechdevavbanks" # globally unique, alphanumerics only
+    location = "eastus2"
+    sku      = "Basic"
+  }
+
   # ---- Monitoring (Azure Managed Prometheus) ----
   # One global Azure Monitor Workspace for every cluster in the env; clusters in all regions send to it.
   monitoring = {

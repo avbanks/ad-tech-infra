@@ -1,0 +1,35 @@
+# On merge to main: lint + render, then publish any chart whose Chart.yaml version isn't in ACR yet.
+# Publishing is inert - nothing deploys until a wave's versions.yaml is bumped to the new version.
+# Needs repo secrets AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID for an identity with AcrPush
+# (federated credential for this repo's main branch) and variable CHART_REGISTRY (e.g. acradtechdev.azurecr.io).
+name: charts
+on:
+  push:
+    branches: [main]
+    paths: ["k8s/**"]
+  pull_request:
+    paths: ["k8s/**"]
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: fluxcd/flux2/action@main
+      - run: make k8s-check
+  publish:
+    if: github.event_name == 'push'
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: scripts/publish-charts.sh -r "${{ vars.CHART_REGISTRY }}"

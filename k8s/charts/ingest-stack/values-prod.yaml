@@ -1,0 +1,8 @@
+# prod (not applied anywhere yet).
+vector:
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 20
+  resources:
+    requests: { cpu: "1", memory: 1Gi }
+    limits: { memory: 2Gi }

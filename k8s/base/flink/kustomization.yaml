@@ -1,0 +1,10 @@
+# Three releases with an ordering chain: cert-manager must serve before the operator's webhook can get a
+# cert, and the operator's webhook must be up before a FlinkDeployment is admitted.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../_common
+  - namespace.yaml
+  - cert-manager.yaml
+  - flink-operator.yaml
+  - flink-stack.yaml

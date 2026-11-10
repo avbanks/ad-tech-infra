@@ -142,3 +142,19 @@ resource "azurerm_monitor_data_collection_rule_association" "prometheus" {
   target_resource_id      = azurerm_kubernetes_cluster.this.id
   data_collection_rule_id = var.prometheus_dcr_id
 }
+
+module "flux" {
+  count  = var.gitops == null ? 0 : 1
+  source = "../flux-bootstrap"
+
+  cluster_id                  = azurerm_kubernetes_cluster.this.id
+  kubelet_identity_object_id  = azurerm_kubernetes_cluster.this.kubelet_identity[0].object_id
+  chart_registry_id           = var.gitops.chart_registry_id
+  chart_registry_login_server = var.gitops.chart_registry_login_server
+  git                         = var.gitops.git
+  wave_path                   = var.gitops.wave_path
+  role                        = var.gitops.role
+  facts                       = merge({ CLUSTER_NAME = var.name }, var.gitops.facts)
+
+  depends_on = [azurerm_kubernetes_cluster_node_pool.app]
+}

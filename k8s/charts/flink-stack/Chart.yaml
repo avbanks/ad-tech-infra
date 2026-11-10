@@ -1,0 +1,7 @@
+apiVersion: v2
+name: flink-stack
+description: Flink session cluster (FlinkDeployment) wired to the cell's Kafka. Jobs are FlinkSessionJob resources.
+type: application
+# Bump on every change: the version is what Kargo/Flux promote wave by wave.
+version: 0.1.0
+appVersion: "1.20"

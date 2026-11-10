@@ -1,6 +1,0 @@
-# Per-cluster values, overridden by scripts/deploy-k8s.sh via --state-values-set from AKS tags.
-role: ""          # ingest | kafka | flink | hub
-cell: "00"
-region: ""
-continent: ""
-kafkaIpPrefix: ""

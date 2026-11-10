@@ -1,0 +1,25 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ingest-stack
+  namespace: ingest
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: ingest-stack
+      version: "${INGEST_STACK_VERSION}"
+      sourceRef: { kind: HelmRepository, name: adtech, namespace: flux-system }
+      valuesFiles:
+        - values.yaml
+        - values-${ENVIRONMENT}.yaml
+        - values-${REGION}.yaml
+  install:
+    remediation: { retries: 3 }
+  upgrade:
+    remediation: { retries: 2, remediateLastFailure: true }
+  values:
+    global:
+      cell: "${CELL}"
+      region: "${REGION}"
+      kafkaBootstrap: "${KAFKA_IP_PREFIX}.250:9094"
