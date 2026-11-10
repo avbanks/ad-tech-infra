@@ -1,0 +1,5 @@
+apiVersion: v2
+name: fleet-baseline
+description: Resources created on the Fleet hub and propagated to every member via ClusterResourcePlacement.
+type: application
+version: 0.1.0

@@ -1,0 +1,47 @@
+# Ingest tier: HTTP collector (bidder/SSP/pixel events) -> cell-local Kafka.
+role: Stateless-Aggregator
+replicas: 1
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+resources:
+  requests: { cpu: 200m, memory: 256Mi }
+  limits: { memory: 512Mi }
+service:
+  enabled: true
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+customConfig:
+  data_dir: /vector-data-dir
+  api:
+    enabled: true
+    address: 0.0.0.0:8686
+  sources:
+    events_http:
+      type: http_server
+      address: 0.0.0.0:8080
+      decoding:
+        codec: json
+  transforms:
+    tag_cell:
+      type: remap
+      inputs: [events_http]
+      source: |
+        .ingest_cell = "{{ .StateValues.cell }}"
+        .ingest_region = "{{ .StateValues.region }}"
+        .received_at = now()
+  sinks:
+    kafka_raw:
+      type: kafka
+      inputs: [tag_cell]
+      bootstrap_servers: "{{ .StateValues.kafkaIpPrefix }}.250:9094"
+      # Route by event type: bid-requests, impressions, clicks, ...
+      # Escaped twice: helmfile renders this file, then the vector chart runs customConfig through
+      # `tpl`; Vector must end up with the literal event_type template (double curly braces).
+      topic: '{{ `{{ "{{" }} event_type {{ "}}" }}` }}'
+      encoding:
+        codec: json
+      compression: lz4

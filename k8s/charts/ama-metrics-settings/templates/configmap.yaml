@@ -1,0 +1,16 @@
+# The ama-metrics agent watches this exact name/namespace and restarts itself when it changes.
+# Sections left out here fall back to the add-on defaults.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ama-metrics-settings-configmap
+  namespace: kube-system
+data:
+  schema-version: v1
+  config-version: ver1
+  minimal-ingestion-profile: |-
+    enabled = {{ .Values.minimalIngestionProfile }}
+  default-targets-metrics-keep-list: |-
+    {{- range $target, $regex := .Values.keepList }}
+    {{ $target }} = {{ $regex | quote }}
+    {{- end }}

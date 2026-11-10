@@ -1,0 +1,118 @@
+# One helmfile for every cluster. The cluster's role decides which releases are installed:
+#   helmfile -e dev --kube-context <ctx> --state-values-set role=kafka,cell=01,... apply
+# scripts/deploy-k8s.sh discovers clusters (AKS tags) and fleet hubs and runs this for each.
+environments:
+  dev:
+    values:
+      - environments/defaults.yaml
+      - environments/dev.yaml
+---
+repositories:
+  - name: strimzi
+    url: quay.io/strimzi-helm
+    oci: true
+  - name: jetstack
+    url: quay.io/jetstack/charts
+    oci: true
+  - name: flink-operator
+    # Apache moves superseded releases to archive.apache.org/dist/flink/ - bump both together.
+    url: https://downloads.apache.org/flink/flink-kubernetes-operator-1.16.1/
+  - name: vector
+    url: https://helm.vector.dev
+
+helmDefaults:
+  wait: true
+  timeout: 600
+  createNamespace: true
+  atomic: false
+
+{{- $role := .StateValues.role }}
+{{- /* debug = practice cluster (live/dev/sandbox): gets only the "every member cluster" releases. */}}
+{{- if not (has $role (list "ingest" "kafka" "flink" "hub" "debug")) }}
+{{-   fail (printf "role must be one of ingest|kafka|flink|hub|debug, got %q" $role) }}
+{{- end }}
+
+releases:
+  # ------------------------- every member cluster -------------------------
+  # Managed Prometheus agent settings (the add-on itself is enabled by modules/aks-cluster).
+  # Not on the hub: Fleet hubs don't run the metrics add-on.
+  - name: ama-metrics-settings
+    namespace: kube-system
+    chart: ./charts/ama-metrics-settings
+    installed: {{ ne $role "hub" }}
+    labels: { tier: platform }
+
+  # ------------------------------ kafka ------------------------------
+  - name: strimzi-kafka-operator
+    namespace: kafka
+    chart: strimzi/strimzi-kafka-operator
+    version: 1.3.1
+    installed: {{ eq $role "kafka" }}
+    labels: { tier: kafka }
+    values:
+      - values/strimzi.yaml.gotmpl
+
+  - name: kafka-cluster
+    namespace: kafka
+    chart: ./charts/kafka-cluster
+    installed: {{ eq $role "kafka" }}
+    labels: { tier: kafka }
+    needs: [kafka/strimzi-kafka-operator]
+    disableValidationOnInstall: true   # CRDs come from the operator release on first install
+    values:
+      - nodePool:
+          replicas: {{ .Values.kafka.replicas }}
+        replicationFactor: {{ .Values.kafka.replicationFactor }}
+        vnetListener:
+          ipPrefix: {{ .StateValues.kafkaIpPrefix | quote }}
+
+  # ------------------------------ flink ------------------------------
+  - name: cert-manager
+    namespace: cert-manager
+    chart: jetstack/cert-manager
+    version: v1.21.3
+    installed: {{ eq $role "flink" }}
+    labels: { tier: flink }
+    values:
+      - values/cert-manager.yaml.gotmpl
+
+  - name: flink-kubernetes-operator
+    namespace: flink
+    chart: flink-operator/flink-kubernetes-operator
+    version: 1.16.1
+    installed: {{ eq $role "flink" }}
+    labels: { tier: flink }
+    needs: [cert-manager/cert-manager]
+    values:
+      - values/flink-operator.yaml.gotmpl
+
+  - name: flink-session
+    namespace: flink
+    chart: ./charts/flink-session
+    installed: {{ eq $role "flink" }}
+    labels: { tier: flink }
+    needs: [flink/flink-kubernetes-operator]
+    disableValidationOnInstall: true
+    values:
+      - kafkaBootstrap: "{{ .StateValues.kafkaIpPrefix }}.250:9094"
+
+  # ------------------------------ ingest -----------------------------
+  - name: vector
+    namespace: ingest
+    chart: vector/vector
+    version: 0.61.0
+    installed: {{ eq $role "ingest" }}
+    labels: { tier: ingest }
+    values:
+      - values/vector.yaml.gotmpl
+
+  # --------------------------- fleet hub -----------------------------
+  - name: fleet-baseline
+    namespace: fleet-system
+    chart: ./charts/fleet-baseline
+    installed: {{ eq $role "hub" }}
+    labels: { tier: hub }
+    disableValidationOnInstall: true
+    values:
+      - environment: {{ .Values.environment }}
+        continent: {{ .StateValues.continent | quote }}

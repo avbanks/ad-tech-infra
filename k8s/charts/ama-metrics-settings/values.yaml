@@ -1,0 +1,8 @@
+# Keep only the curated metric list for default targets (cost control). keepList regexes are added on top.
+minimalIngestionProfile: true
+
+# Default target -> metric-name regex to keep in addition to the minimal profile.
+# Targets: cadvisor, kubelet, kubestate, nodeexporter, coredns, kubeproxy, apiserver, ...
+keepList:
+  # PSI (pressure stall information) per container; id="/" is the whole node.
+  cadvisor: "container_pressure_.*"

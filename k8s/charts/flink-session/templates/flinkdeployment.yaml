@@ -1,0 +1,40 @@
+{{- if not .Values.kafkaBootstrap }}
+{{- fail "kafkaBootstrap is required (the cell's Kafka internal LB, e.g. 10.10.17.250:9094)" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-endpoints
+data:
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.kafkaBootstrap | quote }}
+---
+# No job spec => session cluster; jobs are submitted as FlinkSessionJob resources.
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: {{ .Values.name }}
+spec:
+  image: {{ .Values.image }}
+  flinkVersion: {{ .Values.flinkVersion }}
+  serviceAccount: {{ .Values.serviceAccount }}
+  flinkConfiguration:
+    {{- range $k, $v := .Values.flinkConfiguration }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  podTemplate:
+    spec:
+      containers:
+        - name: flink-main-container
+          envFrom:
+            - configMapRef:
+                name: kafka-endpoints
+  jobManager:
+    replicas: {{ .Values.jobManager.replicas }}
+    resource:
+      memory: {{ .Values.jobManager.resource.memory | quote }}
+      cpu: {{ .Values.jobManager.resource.cpu }}
+  taskManager:
+    replicas: {{ .Values.taskManager.replicas }}
+    resource:
+      memory: {{ .Values.taskManager.resource.memory | quote }}
+      cpu: {{ .Values.taskManager.resource.cpu }}

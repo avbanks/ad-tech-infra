@@ -1,0 +1,46 @@
+{{- if and .Values.vnetListener.enabled (not .Values.vnetListener.ipPrefix) }}
+{{- fail "vnetListener.ipPrefix is required when vnetListener.enabled (set from the cluster's kafkaIpPrefix tag)" }}
+{{- end }}
+{{- if gt (int .Values.nodePool.replicas) 4 }}
+{{- fail "nodePool.replicas > 4 would exhaust the .251-.254 broker IP range; widen the scheme first" }}
+{{- end }}
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: {{ .Values.clusterName }}
+spec:
+  kafka:
+    version: {{ .Values.kafkaVersion | quote }}
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      {{- if .Values.vnetListener.enabled }}
+      - name: vnet
+        port: {{ .Values.vnetListener.port }}
+        type: loadbalancer
+        tls: false
+        configuration:
+          bootstrap:
+            annotations:
+              service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+              service.beta.kubernetes.io/azure-load-balancer-ipv4: "{{ .Values.vnetListener.ipPrefix }}.250"
+          brokers:
+            {{- range $i := until (int .Values.nodePool.replicas) }}
+            - broker: {{ $i }}
+              annotations:
+                service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+                service.beta.kubernetes.io/azure-load-balancer-ipv4: "{{ $.Values.vnetListener.ipPrefix }}.{{ add 251 $i }}"
+            {{- end }}
+      {{- end }}
+    config:
+      offsets.topic.replication.factor: {{ .Values.replicationFactor }}
+      transaction.state.log.replication.factor: {{ .Values.replicationFactor }}
+      transaction.state.log.min.isr: {{ .Values.minInsyncReplicas }}
+      default.replication.factor: {{ .Values.replicationFactor }}
+      min.insync.replicas: {{ .Values.minInsyncReplicas }}
+      auto.create.topics.enable: false
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

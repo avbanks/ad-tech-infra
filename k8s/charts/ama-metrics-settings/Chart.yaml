@@ -1,0 +1,5 @@
+apiVersion: v2
+name: ama-metrics-settings
+description: Settings for the AKS managed Prometheus agent (ama-metrics) - which default-target metrics are kept.
+type: application
+version: 0.1.0
