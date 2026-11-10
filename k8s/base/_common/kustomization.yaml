@@ -1,0 +1,11 @@
+# Shared by every role. Changes here reach ALL clusters on merge (the base is read from main), so keep it
+# to plumbing: the baseline namespace/PriorityClass, the chart registry, the platform agent settings and
+# Flux -> GitHub status reporting.
+# Anything that could hurt belongs in a chart, where it has a version and goes through the waves.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - baseline.yaml
+  - helmrepository.yaml
+  - ama-metrics-settings.yaml
+  - notifications.yaml

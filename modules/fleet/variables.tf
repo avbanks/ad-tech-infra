@@ -8,7 +8,7 @@ variable "name" {
 }
 
 variable "location" {
-  description = "Fleet (and hub) location - the continent's primary region."
+  description = "Fleet resource location - the continent's primary region."
   type        = string
 }
 
@@ -16,13 +16,12 @@ variable "resource_group_name" {
   type = string
 }
 
-variable "hub_vm_size" {
-  description = "VM size for the Fleet hub cluster's single node."
-  type        = string
-}
-
 variable "update_stages" {
-  description = "Ordered stages; each stage lists the update groups (regions) it upgrades in parallel."
+  description = <<-EOT
+    Ordered stages of the "waves" update strategy; each stage names the update groups (= waves, set on each
+    fleet member by the aks-cluster unit) it upgrades in parallel. A one-stage strategy is also created per
+    stage so scripts/fleet-upgrade.sh can run a single wave and stop.
+  EOT
   type = list(object({
     name                     = string
     groups                   = list(string)
@@ -31,7 +30,7 @@ variable "update_stages" {
 }
 
 variable "auto_upgrade" {
-  description = "Fleet auto-upgrade profile. channel: Stable | Rapid | NodeImage. null disables it."
+  description = "Fleet auto-upgrade profile (channel: Stable | Rapid | NodeImage). null = off: upgrades are started by hand, wave by wave."
   type = object({
     channel = string
   })
@@ -41,11 +40,6 @@ variable "auto_upgrade" {
     condition     = var.auto_upgrade == null || contains(["Stable", "Rapid", "NodeImage"], try(var.auto_upgrade.channel, ""))
     error_message = "auto_upgrade.channel must be Stable, Rapid or NodeImage."
   }
-}
-
-variable "admin_group_object_id" {
-  description = "Entra group granted cluster-admin on the Fleet hub (to apply ClusterResourcePlacements)."
-  type        = string
 }
 
 variable "tags" {

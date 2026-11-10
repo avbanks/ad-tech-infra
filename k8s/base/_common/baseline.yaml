@@ -1,0 +1,27 @@
+# Cross-cutting baseline every cluster gets (was a Fleet hub ClusterResourcePlacement; now Flux, no hub).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: adtech-shared
+  labels:
+    adtech.io/managed-by: flux
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-info
+  namespace: adtech-shared
+data:
+  environment: "${ENVIRONMENT}"
+  continent: "${CONTINENT}"
+  region: "${REGION}"
+  cell: "${CELL}"
+  wave: "${WAVE}"
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: adtech-streaming-critical
+value: 1000000
+globalDefault: false
+description: Kafka brokers and Flink JobManagers - evicted last.

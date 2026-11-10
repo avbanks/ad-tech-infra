@@ -4,8 +4,10 @@ resource "azurerm_resource_group" "this" {
   tags     = var.tags
 }
 
-# azapi is used because azurerm's hub_profile is deprecated and no longer sent to the API.
-# The hub is what enables ClusterResourcePlacement (multi-cluster resource propagation).
+# Hubless fleet: an Azure-side grouping of member clusters used only for update orchestration (Kubernetes
+# and node-image upgrades in waves). No hub cluster = no VM, no control plane, nothing to patch.
+# Workload delivery to members is Flux (k8s/base, k8s/waves), so ClusterResourcePlacement isn't needed.
+# azapi because azurerm's fleet resource still models the deprecated hub_profile.
 resource "azapi_resource" "fleet" {
   type      = "Microsoft.ContainerService/fleets@2025-03-01"
   name      = var.name
@@ -13,27 +15,14 @@ resource "azapi_resource" "fleet" {
   location  = var.location
   tags      = var.tags
 
-  identity {
-    type = "SystemAssigned"
-  }
-
   body = {
-    properties = {
-      hubProfile = {
-        dnsPrefix = var.name
-        agentProfile = {
-          vmSize = var.hub_vm_size
-        }
-      }
-    }
+    properties = {}
   }
-
-  response_export_values = ["properties.hubProfile.fqdn", "properties.hubProfile.kubernetesVersion"]
 }
 
-# Primary region first, bake, then its paired region - never both halves of a pair at once.
-resource "azurerm_kubernetes_fleet_update_strategy" "paired_regions" {
-  name                        = "paired-regions"
+# Full rollout: wave-1 -> bake -> wave-2 -> bake -> wave-3 (same waves Flux uses for app releases).
+resource "azurerm_kubernetes_fleet_update_strategy" "waves" {
+  name                        = "waves"
   kubernetes_fleet_manager_id = azapi_resource.fleet.id
 
   dynamic "stage" {
@@ -52,8 +41,27 @@ resource "azurerm_kubernetes_fleet_update_strategy" "paired_regions" {
   }
 }
 
-# Fleet auto-upgrade: when a new version lands in the channel, Fleet starts an update run
-# that follows the paired-regions strategy above.
+# One wave at a time: a single-stage strategy per wave. scripts/fleet-upgrade.sh -w wave-2 uses "wave-2".
+# The gate between waves is a human starting the next run.
+resource "azurerm_kubernetes_fleet_update_strategy" "wave" {
+  for_each = { for s in var.update_stages : s.name => s }
+
+  name                        = each.key
+  kubernetes_fleet_manager_id = azapi_resource.fleet.id
+
+  stage {
+    name = each.key
+
+    dynamic "group" {
+      for_each = each.value.groups
+      content {
+        name = group.value
+      }
+    }
+  }
+}
+
+# Optional. Off in dev: a new version in the channel would start the whole "waves" run on its own.
 resource "azapi_resource" "auto_upgrade" {
   count = var.auto_upgrade == null ? 0 : 1
 
@@ -64,17 +72,10 @@ resource "azapi_resource" "auto_upgrade" {
   body = {
     properties = {
       channel          = var.auto_upgrade.channel
-      updateStrategyId = azurerm_kubernetes_fleet_update_strategy.paired_regions.id
+      updateStrategyId = azurerm_kubernetes_fleet_update_strategy.waves.id
       nodeImageSelection = {
         type = "Latest"
       }
     }
   }
-}
-
-resource "azurerm_role_assignment" "hub_admin" {
-  scope                = azapi_resource.fleet.id
-  role_definition_name = "Azure Kubernetes Fleet Manager RBAC Cluster Admin"
-  principal_id         = var.admin_group_object_id
-  principal_type       = "Group"
 }

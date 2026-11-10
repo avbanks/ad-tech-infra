@@ -29,10 +29,9 @@ locals {
     flink  = { subnet_block = 2, vm_size = "Standard_D2ads_v6", min_count = 1, max_count = 2 }  # 2 vCPU / 8 GiB
   }
 
-  # ---- Fleet Manager ----
-  fleet_hub_vm_size        = "Standard_D2alds_v6"
-  fleet_stage_wait_seconds = 600 # bake time between primary and secondary region (dev: 10 min)
-  fleet_auto_upgrade       = { channel = "Stable" }
+  # ---- Fleet Manager (hubless; Kubernetes upgrades only) ----
+  fleet_stage_wait_seconds = 600  # bake between waves when the full "waves" strategy is used (dev: 10 min)
+  fleet_auto_upgrade       = null # off: start runs by hand, one wave at a time (scripts/fleet-upgrade.sh)
 
   # ---- Monitoring (Azure Managed Prometheus) ----
   # One global Azure Monitor Workspace for every cluster in the env; clusters in all regions send to it.

@@ -90,7 +90,7 @@ variable "fleet_id" {
 }
 
 variable "fleet_update_group" {
-  description = "Update group used by the fleet's update strategy (we use the region name)."
+  description = "Update group used by the fleet's update strategies (the cluster's wave: wave-1 
   type        = string
 }
 

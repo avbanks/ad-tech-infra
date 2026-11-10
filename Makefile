@@ -3,15 +3,25 @@
 # make apply-global              - env-wide resources (Prometheus workspace + Grafana); before any continent
 # make apply-debug               - single-node practice cluster aks-dev-eus2-debug (not in the fleet)
 # make apply CONTINENT=na        - create a continent (fleet + 2 regions x 9 clusters)
+<<<<<<< Updated upstream
 # make k8s-check                 - lint charts + render helmfile for every role (no cluster needed)
 # make k8s-deploy [ARGS="-c na apply"]
+=======
+# make k8s-check                 - lint charts + render k8s/base for every role as Flux would (no cluster needed)
+# make charts-publish [ARGS=-n]  - package k8s/charts/* and push to the env's ACR (what CI does on merge)
+# make k8s-upgrade CONTINENT=na WAVE=wave-1 VERSION=1.33.2 - Fleet update run for one wave (auto-upgrade is off)
+>>>>>>> Stashed changes
 
 LIVE      := live/dev
 CONTINENT ?=
 TG_DIR    := $(if $(CONTINENT),$(LIVE)/$(CONTINENT),$(LIVE))
 TG        := terragrunt run --all --provider-cache --non-interactive
 
+<<<<<<< Updated upstream
 .PHONY: generate validate plan apply-global apply-debug apply destroy destroy-global destroy-debug fmt helm-lint k8s-template k8s-check k8s-deploy
+=======
+.PHONY: generate validate plan apply-global apply-debug apply destroy destroy-global destroy-debug fmt helm-lint k8s-render k8s-check charts-publish k8s-upgrade
+>>>>>>> Stashed changes
 
 generate:
 	cd $(LIVE) && terragrunt stack generate
@@ -57,7 +67,24 @@ k8s-template:
 	  && echo "helmfile role=$$r OK" || exit 1; \
 	done
 
+<<<<<<< Updated upstream
 k8s-check: helm-lint k8s-template
 
 k8s-deploy:
 	scripts/deploy-k8s.sh $(ARGS)
+=======
+# Every role x a wave dir: what Flux will apply, with every $${VAR} resolved.
+k8s-render:
+	for r in ingest kafka flink debug; do \
+	  scripts/render-base.sh $$r k8s/waves/dev/na/wave-1 > /dev/null && echo "base/$$r OK" || exit 1; \
+	done
+
+k8s-check: helm-lint k8s-render
+
+charts-publish:
+	scripts/publish-charts.sh $(ARGS)
+
+k8s-upgrade:
+	@test -n "$(CONTINENT)" -a -n "$(WAVE)" -a -n "$(VERSION)" || (echo "set CONTINENT, WAVE (wave-1|wave-2|wave-3|waves) and VERSION" && exit 1)
+	scripts/fleet-upgrade.sh -c $(CONTINENT) -w $(WAVE) -v $(VERSION)
+>>>>>>> Stashed changes

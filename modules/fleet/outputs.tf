@@ -10,10 +10,10 @@ output "resource_group_name" {
   value = azurerm_resource_group.this.name
 }
 
-output "hub_fqdn" {
-  value = try(azapi_resource.fleet.output.properties.hubProfile.fqdn, null)
-}
-
-output "update_strategy_id" {
-  value = azurerm_kubernetes_fleet_update_strategy.paired_regions.id
+output "update_strategy_ids" {
+  description = "waves = full staged rollout; wave-N = that wave only."
+  value = merge(
+    { waves = azurerm_kubernetes_fleet_update_strategy.waves.id },
+    { for k, v in azurerm_kubernetes_fleet_update_strategy.wave : k => v.id },
+  )
 }

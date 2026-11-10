@@ -75,7 +75,7 @@ inputs = {
   }
 
   fleet_id           = dependency.fleet.outputs.fleet_id
-  fleet_update_group = values.location
+  fleet_update_group = local.wave # Fleet update runs stage by wave, same grouping as app releases
 
   prometheus_dcr_id = dependency.monitoring.outputs.data_collection_rule_id
 
