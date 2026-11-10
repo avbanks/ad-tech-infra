@@ -1,6 +1,0 @@
-apiVersion: v2
-name: kafka-cluster
-description: Strimzi (KRaft) Kafka cluster, node pool and ad-tech topics for one cell.
-type: application
-version: 0.1.0
-appVersion: "4.3.2"

@@ -19,6 +19,7 @@ stack "primary" {
   path   = local.pair.primary.location
   values = merge(local.pair.primary, {
     continent  = local.continent
+    is_primary = true             # wave-1 (cell 01) and wave-2 (cells 02-03) live here
     fleet_path = "../../../fleet" # from <continent>/.terragrunt-stack/<region>/.terragrunt-stack/<cluster>
   })
 }
@@ -28,6 +29,7 @@ stack "secondary" {
   path   = local.pair.secondary.location
   values = merge(local.pair.secondary, {
     continent  = local.continent
+    is_primary = false # wave-3
     fleet_path = "../../../fleet"
   })
 }

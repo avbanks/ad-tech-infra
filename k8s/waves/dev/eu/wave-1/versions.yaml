@@ -1,0 +1,17 @@
+# dev/eu wave-1 (canary): uksouth cell 01 - ingest-01, kafka-01, flink-01 (3 clusters). Auto-promoted.
+# One key per HelmRelease in k8s/base. Promotion = changing a number here (direct push for wave-1,
+# PR for later waves). Every cluster whose Flux "wave" Kustomization points at this directory follows.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: versions
+  namespace: flux-system
+data:
+  # ours (k8s/charts, published to ACR)
+  AMA_METRICS_SETTINGS_VERSION: "0.1.0"
+  KAFKA_STACK_VERSION: "0.1.0"
+  FLINK_STACK_VERSION: "0.1.0"
+  INGEST_STACK_VERSION: "0.1.0"
+  # upstream
+  CERT_MANAGER_VERSION: "v1.21.3"
+  FLINK_OPERATOR_VERSION: "1.16.1"

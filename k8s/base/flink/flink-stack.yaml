@@ -1,0 +1,26 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flink-stack
+  namespace: flink
+spec:
+  interval: 10m
+  dependsOn:
+    - name: flink-kubernetes-operator
+  chart:
+    spec:
+      chart: flink-stack
+      version: "${FLINK_STACK_VERSION}"
+      sourceRef: { kind: HelmRepository, name: adtech, namespace: flux-system }
+      valuesFiles:
+        - values.yaml
+        - values-${ENVIRONMENT}.yaml
+        - values-${REGION}.yaml
+  install:
+    remediation: { retries: 3 }
+  upgrade:
+    remediation: { retries: 2, remediateLastFailure: true }
+  driftDetection:
+    mode: warn
+  values:
+    kafkaBootstrap: "${KAFKA_IP_PREFIX}.250:9094"

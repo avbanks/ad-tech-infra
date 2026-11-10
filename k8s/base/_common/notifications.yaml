@@ -1,0 +1,27 @@
+# Flux -> GitHub commit status per cluster, so a promotion tool can tell when a wave is actually healthy.
+# Context on the commit: flux/role/<cluster>. Requires Secret flux-system/github-status-token (key "token",
+# a GitHub token with commit-status write): see scripts/flux-status-secret.sh.
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: github-status
+  namespace: flux-system
+spec:
+  type: github
+  address: ${GITOPS_REPO_URL}
+  secretRef:
+    name: github-status-token
+  commitStatusExpr: "'flux/' + kustomization.name + '/' + '${CLUSTER_NAME}'"
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: role-status
+  namespace: flux-system
+spec:
+  providerRef:
+    name: github-status
+  eventSeverity: info
+  eventSources:
+    - kind: Kustomization
+      name: platform-role   # <flux-config name>-<kustomization name>, as the AKS Flux extension names it

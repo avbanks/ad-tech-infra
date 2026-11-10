@@ -1,6 +1,0 @@
-apiVersion: v2
-name: flink-session
-description: Flink session cluster (FlinkDeployment) wired to the cell's Kafka.
-type: application
-version: 0.1.0
-appVersion: "1.20"

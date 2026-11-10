@@ -33,7 +33,7 @@ generate "provider" {
       subscription_id = "${local.env.subscription_id}"
 
       # Not in azurerm's default "core" set: Azure Monitor Workspace, Managed Grafana, Prometheus rule groups.
-      resource_providers_to_register = ["Microsoft.Monitor", "Microsoft.Dashboard", "Microsoft.AlertsManagement"]
+      resource_providers_to_register = ["Microsoft.Monitor", "Microsoft.Dashboard", "Microsoft.AlertsManagement", "Microsoft.KubernetesConfiguration"]
     }
   EOF
 }

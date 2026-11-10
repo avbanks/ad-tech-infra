@@ -1,0 +1,5 @@
+# dev: autoscale 1-3 replicas.
+vector:
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 3

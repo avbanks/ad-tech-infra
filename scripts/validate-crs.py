@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Strictly validate rendered custom resources against CRD schemas (unknown fields fail).
 
-    helm template x k8s/charts/kafka-cluster --set vnetListener.ipPrefix=10.10.17 > /tmp/k.yaml
+    helm template x k8s/charts/kafka-stack --set vnetListener.ipPrefix=10.10.17 > /tmp/k.yaml
     scripts/validate-crs.py /tmp/k.yaml path/to/strimzi/crds/*.yaml
 
 Requires: pip install pyyaml jsonschema

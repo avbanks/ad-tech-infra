@@ -1,0 +1,11 @@
+apiVersion: v2
+name: ingest-stack
+description: Ingest tier - Vector HTTP collector (bidder/SSP/pixel events) -> cell-local Kafka.
+type: application
+# Bump on every change: the version is what Kargo/Flux promote wave by wave.
+version: 0.1.0
+appVersion: "0.61.0"
+dependencies:
+  - name: vector
+    version: 0.61.0
+    repository: https://helm.vector.dev

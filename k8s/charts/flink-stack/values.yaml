@@ -1,0 +1,20 @@
+# Defaults for every Flink cluster. Overridden by values-<env>.yaml, values-<region>.yaml, then Flux-injected values.
+name: adtech-session
+image: flink:1.20
+flinkVersion: v1_20
+serviceAccount: flink
+
+# Kafka bootstrap for this cell (e.g. 10.10.17.250:9094); injected by Flux, exposed to jobs via ConfigMap/env.
+kafkaBootstrap: ""
+
+flinkConfiguration:
+  taskmanager.numberOfTaskSlots: "2"
+  state.backend.type: rocksdb
+  execution.checkpointing.interval: 60s
+
+jobManager:
+  replicas: 1
+  resource: { memory: 1024m, cpu: 0.5 }
+taskManager:
+  replicas: 1
+  resource: { memory: 1536m, cpu: 0.5 }

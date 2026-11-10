@@ -1,0 +1,57 @@
+# Defaults for every ingest cluster. Overridden by values-<env>.yaml, values-<region>.yaml, then Flux-injected values.
+# Everything under "vector:" is passed to the Vector subchart.
+
+# Cluster facts injected by Flux (HelmRelease .spec.values). Under "global" because Helm only
+# shares globals with subcharts, and the Vector subchart renders customConfig through `tpl`.
+global:
+  cell: ""
+  region: ""
+  kafkaBootstrap: ""   # <kafkaIpPrefix>.250:9094
+
+vector:
+  role: Stateless-Aggregator
+  replicas: 1
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits: { memory: 512Mi }
+  service:
+    enabled: true
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+  customConfig:
+    data_dir: /vector-data-dir
+    api:
+      enabled: true
+      address: 0.0.0.0:8686
+    sources:
+      events_http:
+        type: http_server
+        address: 0.0.0.0:8080
+        decoding:
+          codec: json
+    transforms:
+      tag_cell:
+        type: remap
+        inputs: [events_http]
+        # The vector chart runs customConfig through `tpl`, so these resolve from the umbrella's values.
+        source: |
+          .ingest_cell = "{{ .Values.global.cell }}"
+          .ingest_region = "{{ .Values.global.region }}"
+          .received_at = now()
+    sinks:
+      kafka_raw:
+        type: kafka
+        inputs: [tag_cell]
+        bootstrap_servers: "{{ .Values.global.kafkaBootstrap }}"
+        # Route by event type: bid-requests, impressions, clicks, ...
+        # Escaped once: `tpl` must leave Vector the literal {{ event_type }} template.
+        topic: '{{ "{{" }} event_type {{ "}}" }}'
+        encoding:
+          codec: json
+        compression: lz4

@@ -1,0 +1,37 @@
+# Apache moves superseded releases to archive.apache.org/dist/flink/ - the URL carries the version so a bump
+# of FLINK_OPERATOR_VERSION moves both.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: flink-operator
+  namespace: flink
+spec:
+  url: https://downloads.apache.org/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}/
+  interval: 1h
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flink-kubernetes-operator
+  namespace: flink
+spec:
+  interval: 10m
+  dependsOn:
+    - name: cert-manager
+      namespace: cert-manager
+  chart:
+    spec:
+      chart: flink-kubernetes-operator
+      version: "${FLINK_OPERATOR_VERSION}"
+      sourceRef: { kind: HelmRepository, name: flink-operator }
+  install:
+    crds: CreateReplace
+    remediation: { retries: 3 }
+  upgrade:
+    crds: CreateReplace
+    remediation: { retries: 2, remediateLastFailure: true }
+  values:
+    webhook:
+      create: true
+    # Empty = operator watches all namespaces; the FlinkDeployment lives in its own namespace.
+    watchNamespaces: []

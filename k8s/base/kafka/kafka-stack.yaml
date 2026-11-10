@@ -1,0 +1,30 @@
+# Strimzi operator + Kafka/KafkaNodePool/KafkaTopic for this cell, one umbrella chart, one Helm release.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kafka-stack
+  namespace: kafka
+spec:
+  interval: 10m
+  timeout: 15m
+  chart:
+    spec:
+      chart: kafka-stack
+      version: "${KAFKA_STACK_VERSION}"
+      sourceRef: { kind: HelmRepository, name: adtech, namespace: flux-system }
+      valuesFiles:
+        - values.yaml
+        - values-${ENVIRONMENT}.yaml
+        - values-${REGION}.yaml
+  install:
+    crds: CreateReplace
+    remediation: { retries: 3 }
+  upgrade:
+    crds: CreateReplace
+    remediation: { retries: 2, remediateLastFailure: true }
+  # Strimzi writes status/annotations on its own CRs; don't let drift correction fight it.
+  driftDetection:
+    mode: warn
+  values:
+    vnetListener:
+      ipPrefix: "${KAFKA_IP_PREFIX}"

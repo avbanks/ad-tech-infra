@@ -1,0 +1,1 @@
+ingest-stack {{ .Chart.Version }} (Vector chart {{ .Chart.AppVersion }}), cell {{ .Values.global.cell }} -> {{ .Values.global.kafkaBootstrap }}

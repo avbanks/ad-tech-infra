@@ -104,3 +104,21 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "gitops" {
+  description = "Flux bootstrap. null = no Flux on this cluster."
+  type = object({
+    git = object({
+      repo_url = string
+      branch   = optional(string, "main")
+      token    = optional(string, "")
+    })
+    chart_registry_id           = string
+    chart_registry_login_server = string
+    wave_path                   = string # k8s/waves/<env>/<continent>/<wave>
+    role                        = string # k8s/base/<role>
+    facts                       = map(string)
+  })
+  default   = null
+  sensitive = true
+}

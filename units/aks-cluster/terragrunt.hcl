@@ -16,11 +16,16 @@ locals {
   # find Kafka without service discovery. Published as a tag; read by scripts/deploy-k8s.sh.
   kafka_ip_prefix = "10.${values.cidr_index}.${local.env.roles.kafka.subnet_block * 16 + values.cell}"
 
+  # Rollout wave (k8s/waves/<env>/<continent>/<wave>): canary cell first, rest of the primary region,
+  # then the secondary region. Whole cells only - never split ingest/kafka/flink of one cell across waves.
+  wave = values.is_primary && values.cell == 1 ? "wave-1" : values.is_primary ? "wave-2" : "wave-3"
+
   mock_rg = "/subscriptions/${local.env.subscription_id}/resourceGroups/rg-mock"
 }
 
 terraform {
-  source = "${get_repo_root()}/modules/aks-cluster"
+  # "modules//aks-cluster": Terragrunt copies all of modules/ so the nested ../flux-bootstrap call resolves.
+  source = "${get_repo_root()}/modules//aks-cluster"
 }
 
 dependency "network" {
@@ -40,6 +45,17 @@ dependency "fleet" {
 
   mock_outputs = {
     fleet_id = "${local.mock_rg}/providers/Microsoft.ContainerService/fleets/fleet-mock"
+  }
+  mock_outputs_allowed_terraform_commands = ["init", "validate", "plan"]
+}
+
+# Chart registry (global): Flux pulls k8s/charts/* from here.
+dependency "registry" {
+  config_path = "${dirname(find_in_parent_folders("env.hcl"))}/global/.terragrunt-stack/registry"
+
+  mock_outputs = {
+    id           = "${local.mock_rg}/providers/Microsoft.ContainerRegistry/registries/acrmock"
+    login_server = "acrmock.azurecr.io"
   }
   mock_outputs_allowed_terraform_commands = ["init", "validate", "plan"]
 }
@@ -79,12 +95,31 @@ inputs = {
 
   prometheus_dcr_id = dependency.monitoring.outputs.data_collection_rule_id
 
-  # Tags double as the inventory that scripts/deploy-k8s.sh uses to pick helmfile values.
+  # Flux: this cluster follows k8s/waves/<env>/<continent>/<wave> (versions) and k8s/base/<role> (what runs).
+  gitops = {
+    git                         = local.env.gitops
+    chart_registry_id           = dependency.registry.outputs.id
+    chart_registry_login_server = dependency.registry.outputs.login_server
+    wave_path                   = "k8s/waves/${local.env.environment}/${values.continent}/${local.wave}"
+    role                        = local.role
+    facts = {
+      ENVIRONMENT     = local.env.environment
+      CONTINENT       = values.continent
+      REGION          = values.location
+      ROLE            = local.role
+      CELL            = local.cell
+      WAVE            = local.wave
+      KAFKA_IP_PREFIX = local.kafka_ip_prefix
+    }
+  }
+
+  # Tags are the Azure-side inventory (az aks list --query "[?tags.wave=='wave-1']").
   tags = merge(include.root.inputs.tags, {
     continent     = values.continent
     region        = values.location
     role          = local.role
     cell          = local.cell
+    wave          = local.wave
     kafkaIpPrefix = local.kafka_ip_prefix
   })
 }
